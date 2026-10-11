@@ -438,7 +438,9 @@ waitlist/playbook locale files; #1508 is the CI symptom of both).
 **Issue:** #1586
 **Status:** open
 **Needs human?:** yes (Vercel domain setting)
-**Next step:** Owner picks the primary host.
+**Next step:** Owner picks the primary host: make `caro.sh` the primary
+domain in Vercel and 308-redirect `www` to it, or change `site` in
+`website/astro.config.mjs` to the `www` host.
 
 ### BW-059: `/blog` index omits two published posts
 
@@ -446,7 +448,8 @@ waitlist/playbook locale files; #1508 is the CI symptom of both).
 **Issue:** #1587
 **Status:** open
 **Needs human?:** no
-**Next step:** Add the two posts to the index source.
+**Next step:** Add `claude-skill-launch` and `founders-playbook-adaptation`
+to the `posts` array in `website/src/pages/blog/index.astro`.
 
 ### BW-060: landing page says caro blocks `chmod -R 777 /var/www`; the validator does not flag it
 
