@@ -49,6 +49,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   figure to the 94.8% CSR on the 58-case beta suite that ROADMAP.md records
   (README and CLAUDE.md quoted the older 93.1% v1.1.0 figure) and corrected
   the "zero telemetry" use-case copy to "off unless you opt in".
+- **`caro guard` (experimental): a PreToolUse guardian for agent harnesses.**
+  Claude Code, Grok Build and Codex send each shell command their agent is
+  about to run to `caro guard`, and OpenCode does the same through
+  `integrations/opencode/caro-guard.ts`. In shadow mode (the default) the
+  guard only logs what it would have decided, and `caro guard report`
+  summarizes the log. With `--mode enforce` it denies Critical commands and
+  asks about High ones. It never emits `allow`. See spec 011 and ADR-020.
+- **xAI Grok backend.** `--backend grok`, `--advisor grok`, and
+  `hybrid_remote = "grok"` (`XAI_API_KEY`, `remote-backends` feature), built
+  on a new shared OpenAI-compatible client. `openrouter` and `claude` are
+  now selectable with `--backend` as well.
 - **Calibration and tail-latency metrics in the evaluation harness.**
   `EvaluationResult` now records the backend's reported `confidence`, and
   every `BackendResult` carries `brier`, `ece`, `p50_execution_time_ms` and
