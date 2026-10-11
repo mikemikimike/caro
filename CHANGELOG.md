@@ -18,6 +18,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Jev strategy, tracking #1510) has a data source. Result collection is
   guarded by `evaluation::harness::tests::test_run_with_results_returns_every_result`;
   the record shape by `evaluation::sft_export::tests::decision_pairs_split_accepted_and_corrected`.
+- **Risk-gate calibration baseline in the evaluation harness** (#1510).
+  When a backend's own risk judge and the reference labeller both run,
+  `BackendResult.risk_gate` carries the Brier score and ECE of the local
+  verdict's confidence scored against agreement with the reference, with
+  95% bootstrap confidence intervals, the row count and its share of the
+  run; the evaluation
+  report prints one line per measured backend under the Pareto view. This
+  is the number ADR-018's gate classifier has to beat; the existing
+  `brier`/`ece` fields stay a command-generation metric.
 - **Calibration and tail-latency metrics in the evaluation harness.**
   `EvaluationResult` now records the backend's reported `confidence`, and
   every `BackendResult` carries `brier`, `ece`, `p50_execution_time_ms` and
