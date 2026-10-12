@@ -389,7 +389,8 @@ Extended Tests jobs; BW-015 hides them, because most tests fail on the model fir
 **Issue:** #1610 (overlaps BW-069 for the four workspace lockfiles)
 **Status:** open
 **Needs human?:** yes (dependency bump in `changelog/`, lockfile deletion)
-**Next step:** owner approves the sharp 0.35.5 bump in `changelog/`; BW-069 removes the other four.
+**Next step:** owner approves the sharp 0.35.5 bump in `changelog/`; BW-069 removes the other
+workspace lockfiles. #1608 (BW-071) deletes `website/package-lock.json`.
 
 ---
 
@@ -522,12 +523,12 @@ to the `posts` array in `website/src/pages/blog/index.astro`.
 **Needs human?:** yes (owner merges or closes the PRs)
 **Next step:** Owner triages the open update PRs.
 
-### BW-066: five nested `package-lock.json` files still pin sharp 0.34.5
+### BW-071: `website/package-lock.json` was dead and stale
 
-**Found:** 2026-10-12, sharp 0.35.5 advisory bump (`claude/busy-hypatia-jwh326`)
-**Issue:** #1610
-**Status:** open
-**Needs human?:** yes (dependency minor bump; deleting lockfiles)
-**Next step:** confirm no deploy installs from `website/`, `docs-site/`,
-`landing/` or `apps/devrel/` lockfiles, then delete them; bump sharp in
-`changelog/` and regenerate its lockfile.
+**Found:** 2026-10-12, owner task (`claude/zealous-meitner-y29aw1`)
+**Issue:** none (owner asked for the fix directly)
+**Status:** fixed (#1608)
+**Needs human?:** no
+**Next step:** merge #1608. npm reads only the root lockfile for workspaces;
+`website/README.md` → "Workspace and lockfile" documents it. The other
+workspaces are BW-069.
