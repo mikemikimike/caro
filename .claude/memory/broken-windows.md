@@ -379,18 +379,22 @@ Extended Tests jobs; BW-015 hides them, because most tests fail on the model fir
 
 **Found:** 2026-10-12 sweep register sync
 **Issue:** #1609 (related: #1610)
-**Status:** open
-**Needs human?:** no, after each deploy target is checked to install from the repo root
-**Next step:** per workspace: confirm the deploy install path, delete the nested lockfile, ignore it, drop its codespell skip.
+**Status:** fixed (#1620)
+**Needs human?:** no
+**Next step:** merge #1620. It deletes the nested `package-lock.json` in
+`docs-site/`, `landing/`, `presentation/` and `apps/devrel/`; the PR body
+has the per-project evidence that each Vercel build reads the root lockfile.
+Then confirm the first `caro-docs`, `caro-slides` and `cmdai-saas` production
+builds after the merge are READY (`cmdai` is already red, #1562).
 
 ### BW-070: five nested lockfiles still pin sharp 0.34.5 (three advisories)
 
 **Found:** 2026-10-12 sweep register sync
 **Issue:** #1610 (overlaps BW-069 for the four workspace lockfiles)
 **Status:** open
-**Needs human?:** yes (dependency bump in `changelog/`, lockfile deletion)
-**Next step:** owner approves the sharp 0.35.5 bump in `changelog/`; BW-069 removes the other
-workspace lockfiles. #1608 (BW-071) deletes `website/package-lock.json`.
+**Needs human?:** yes (sharp bump in `changelog/`; the owner asked for the lockfile deletions in #1609)
+**Next step:** owner approves the sharp 0.35.5 bump in `changelog/`. #1608 (BW-071) and
+#1620 (BW-069) delete the other four lockfiles.
 
 ---
 
