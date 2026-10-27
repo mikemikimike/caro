@@ -228,11 +228,21 @@ mod tests {
     }
 
     #[test]
-    fn execute_plan_runs_each_step_against_bash() {
-        // We use a fixture lock with `true` (always exit 0) — keeps the test
-        // deterministic and dependency-free.
-        let lock = lock_with_steps(&["true", "true", "true"], "linux");
-        let plan = plan_run(&lock, "linux").unwrap();
+    fn execute_plan_runs_each_step_for_the_platform() {
+        #[cfg(windows)]
+        let (commands, platform) = (
+            [
+                "Write-Output first",
+                "Write-Output second",
+                "Write-Output third",
+            ],
+            "windows",
+        );
+        #[cfg(not(windows))]
+        let (commands, platform) = (["true", "true", "true"], "linux");
+
+        let lock = lock_with_steps(&commands, platform);
+        let plan = plan_run(&lock, platform).unwrap();
         let results = execute_plan(&plan).unwrap();
         assert_eq!(results.len(), 3);
         for r in results {
@@ -242,8 +252,16 @@ mod tests {
 
     #[test]
     fn execute_plan_stops_on_first_non_zero_exit() {
-        let lock = lock_with_steps(&["true", "false", "true"], "linux");
-        let plan = plan_run(&lock, "linux").unwrap();
+        #[cfg(windows)]
+        let (commands, platform) = (
+            ["Write-Output first", "exit 1", "Write-Output last"],
+            "windows",
+        );
+        #[cfg(not(windows))]
+        let (commands, platform) = (["true", "false", "true"], "linux");
+
+        let lock = lock_with_steps(&commands, platform);
+        let plan = plan_run(&lock, platform).unwrap();
         match execute_plan(&plan) {
             Err(RunError::StepFailed { exit_code, .. }) => {
                 assert_ne!(exit_code, 0);

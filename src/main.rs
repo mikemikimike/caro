@@ -1486,8 +1486,8 @@ fn run_caroml_run(
         .map_err(|e| format!("{}: {}", lock_path.display(), e))?;
 
     // Runbook-first execution: if the per-platform `.sh` runbook exists and
-    // is hash-clean, prefer running it directly (matches what a non-Caro
-    // user would `bash`). Falls back to step-by-step otherwise.
+    // is hash-clean, prefer running it directly on POSIX platforms. Windows
+    // variants use PowerShell syntax, so execute those from the lock instead.
     use caro::caroml::runbook;
     let runbook_path = runbook::runbook_path(&task_path, &target_platform);
     let runbook_status = runbook_status_for_active(&lock, &target_platform, &runbook_path);
@@ -1498,10 +1498,14 @@ fn run_caroml_run(
             println!("(no runbook on disk; will execute step-by-step from the lock)")
         }
         RunbookStatus::Clean => {
-            println!(
-                "(runbook clean — will run `bash {}`)",
-                runbook_path.display()
-            )
+            if target_platform == "windows" {
+                println!("(runbook clean — Windows variants will run step-by-step from the lock)");
+            } else {
+                println!(
+                    "(runbook clean — will run `bash {}`)",
+                    runbook_path.display()
+                );
+            }
         }
         RunbookStatus::Drift => {
             eprintln!(
@@ -1539,18 +1543,21 @@ fn run_caroml_run(
     use caro::caroml::history;
     use std::time::Instant;
     let started = Instant::now();
-    // Prefer runbook execution when it's hash-clean; fall back to per-step.
+    // A Windows runbook is a `.sh` artifact, while its variants use PowerShell.
+    // Execute Windows variants from the lock even when the runbook is clean.
     let result = match runbook_status {
-        RunbookStatus::Clean => match runner::execute_runbook(&runbook_path) {
-            Ok(0) => Ok(vec![]),
-            Ok(other) => Err(runner::RunError::StepFailed {
-                line: 0,
-                intent: format!("bash {}", runbook_path.display()),
-                exit_code: other,
-                stderr: String::new(),
-            }),
-            Err(e) => Err(e),
-        },
+        RunbookStatus::Clean if target_platform != "windows" => {
+            match runner::execute_runbook(&runbook_path) {
+                Ok(0) => Ok(vec![]),
+                Ok(other) => Err(runner::RunError::StepFailed {
+                    line: 0,
+                    intent: format!("bash {}", runbook_path.display()),
+                    exit_code: other,
+                    stderr: String::new(),
+                }),
+                Err(e) => Err(e),
+            }
+        }
         _ => runner::execute_plan(&plan),
     };
     let elapsed_ms = started.elapsed().as_millis() as u64;

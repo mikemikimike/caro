@@ -185,14 +185,24 @@ impl ExecutionContext {
     }
 
     fn detect_shell() -> String {
-        std::env::var("SHELL")
+        let detected = std::env::var("SHELL")
             .ok()
-            .and_then(|shell| shell.rsplit('/').next().map(|s| s.to_string()))
-            .unwrap_or_else(|| "bash".to_string())
+            .and_then(|shell| shell.rsplit(['/', '\\']).next().map(str::to_string));
+
+        #[cfg(windows)]
+        let fallback = if std::env::var_os("PSModulePath").is_some() {
+            "powershell"
+        } else {
+            "cmd"
+        };
+        #[cfg(not(windows))]
+        let fallback = "bash";
+
+        detected.unwrap_or_else(|| fallback.to_string())
     }
 
     fn scan_available_commands() -> Vec<String> {
-        let common_commands = vec![
+        let mut common_commands = vec![
             // System utilities
             "ps",
             "top",
@@ -260,6 +270,18 @@ impl ExecutionContext {
             "podman",
         ];
 
+        #[cfg(windows)]
+        common_commands.extend([
+            "cmd",
+            "powershell",
+            "where",
+            "curl",
+            "tar",
+            "whoami",
+            "findstr",
+            "tasklist",
+        ]);
+
         common_commands
             .iter()
             .filter(|cmd| Self::command_exists(cmd))
@@ -268,9 +290,12 @@ impl ExecutionContext {
     }
 
     fn command_exists(command: &str) -> bool {
-        Command::new("which")
-            .arg(command)
-            .output()
+        #[cfg(windows)]
+        let output = Command::new("where.exe").arg(command).output();
+        #[cfg(not(windows))]
+        let output = Command::new("which").arg(command).output();
+
+        output
             .map(|output| output.status.success())
             .unwrap_or(false)
     }

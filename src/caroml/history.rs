@@ -212,12 +212,12 @@ mod tests {
     #[test]
     fn journal_dir_strips_sha256_prefix() {
         let dir = journal_dir("sha256:abc123").unwrap();
-        assert!(dir.to_string_lossy().ends_with("/.caro/state/abc123"));
+        assert!(dir.ends_with(Path::new(".caro").join("state").join("abc123")));
     }
 
     #[test]
     fn journal_dir_handles_missing_prefix() {
         let dir = journal_dir("def456").unwrap();
-        assert!(dir.to_string_lossy().ends_with("/.caro/state/def456"));
+        assert!(dir.ends_with(Path::new(".caro").join("state").join("def456")));
     }
 }

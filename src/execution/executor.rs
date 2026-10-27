@@ -182,7 +182,12 @@ mod tests {
 
     #[test]
     fn test_command_executor_error_command() {
-        let executor = CommandExecutor::new(ShellType::Bash);
+        #[cfg(windows)]
+        let shell = ShellType::Cmd;
+        #[cfg(not(windows))]
+        let shell = ShellType::Bash;
+
+        let executor = CommandExecutor::new(shell);
         let result = executor.execute("exit 1");
 
         assert!(result.is_ok());
