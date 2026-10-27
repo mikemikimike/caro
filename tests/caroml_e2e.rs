@@ -122,24 +122,13 @@ fn caroml_full_pipeline_e2e() {
         "export must stamp runbook_hash on the active variant"
     );
 
-    // --- 6. caro run -y (Clean runbook, platform-appropriate execution) ----
-    let run_output = Command::new(bin)
+    // --- 6. caro run -y (Clean path, runbook-first execution) --------------
+    Command::new(bin)
         .current_dir(work)
         .args(["run", TASK, "-y"])
-        .output()
-        .expect("run task");
-    assert!(
-        run_output.status.success(),
-        "caro run failed: {}",
-        String::from_utf8_lossy(&run_output.stderr)
-    );
-    let run_stdout = String::from_utf8_lossy(&run_output.stdout);
-    assert!(run_stdout.contains("runbook clean"));
-    if platform == "windows" {
-        assert!(run_stdout.contains("Windows variants will run step-by-step from the lock"));
-    } else {
-        assert!(run_stdout.contains("will run `bash"));
-    }
+        .assert()
+        .success()
+        .stdout(predicates::str::contains("runbook clean"));
 
     // --- 7. cached re-run is still Clean -----------------------------------
     Command::new(bin)
@@ -280,7 +269,7 @@ fn caroml_full_pipeline_e2e() {
         .success()
         .stdout(predicates::str::contains("JOB ci"));
 
-    // --- 16. caro skill install / uninstall (with an isolated home) -------
+    // --- 16. caro skill install / uninstall (with HOME=tempdir) -----------
     let skill_home = work.join("skill-home");
     let skill_dest = skill_home
         .join(".claude")
@@ -296,7 +285,6 @@ fn caroml_full_pipeline_e2e() {
     Command::new(bin)
         .current_dir(work)
         .env("HOME", &skill_home)
-        .env("USERPROFILE", &skill_home)
         .args(["skill", "install"])
         .assert()
         .success()
@@ -309,7 +297,6 @@ fn caroml_full_pipeline_e2e() {
     Command::new(bin)
         .current_dir(work)
         .env("HOME", &skill_home)
-        .env("USERPROFILE", &skill_home)
         .args(["skill", "uninstall"])
         .assert()
         .success()

@@ -26,11 +26,7 @@ pub enum SkillError {
 
 /// The default install destination: `<home>/.claude/skills/caro-scaffold/`.
 pub fn default_install_dir() -> Result<PathBuf, SkillError> {
-    let home = std::env::var_os("HOME")
-        .filter(|home| !home.is_empty())
-        .map(PathBuf::from)
-        .or_else(dirs::home_dir)
-        .ok_or(SkillError::NoHomeDir)?;
+    let home = dirs::home_dir().ok_or(SkillError::NoHomeDir)?;
     Ok(home.join(".claude").join("skills").join(SKILL_NAME))
 }
 

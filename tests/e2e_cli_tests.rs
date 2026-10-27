@@ -3,8 +3,8 @@
 /// These tests run the actual caro binary as a user would and verify behavior
 /// from a user's perspective. Tests are based on the comprehensive manual QA
 /// test cases and validate the complete user experience.
+use std::path::Path;
 use std::process::{Command, Stdio};
-use std::sync::Once;
 use std::time::Duration;
 
 use serde_json::Value;
@@ -19,8 +19,12 @@ struct CliTestRunner {
 impl CliTestRunner {
     /// Create a new CLI test runner with temporary directory
     fn new() -> Self {
-        initialize_capability_cache();
-        let binary_path = env!("CARGO_BIN_EXE_caro").to_string();
+        let binary_path = if Path::new("target/debug/caro").exists() {
+            "target/debug/caro".to_string()
+        } else {
+            // Fallback to cargo run for cases where binary isn't built
+            "cargo".to_string()
+        };
 
         let temp_dir = TempDir::new().expect("Failed to create temp dir");
 
@@ -33,15 +37,21 @@ impl CliTestRunner {
     /// Run a caro command and return stdout, stderr, and exit status
     fn run_command(&self, args: &[&str]) -> CliTestResult {
         let start_time = std::time::Instant::now();
-        let mut cmd = Command::new(&self.binary_path);
-        cmd.args(args);
+
+        let mut cmd = if self.binary_path == "cargo" {
+            let mut cmd = Command::new("cargo");
+            cmd.arg("run").arg("--");
+            cmd.args(args);
+            cmd
+        } else {
+            let mut cmd = Command::new(&self.binary_path);
+            cmd.args(args);
+            cmd
+        };
 
         // Set clean environment
         cmd.env("CARO_CONFIG_DIR", self.temp_dir.path());
-        cmd.env("CARO_CACHE_DIR", self.temp_dir.path().join("cache"));
-        cmd.env("CARO_CAPABILITY_CACHE", capability_cache_path());
-        #[cfg(feature = "mock-backend")]
-        cmd.env("CARO_MOCK_BACKEND", "1");
+        cmd.env_remove("CARO_CACHE_DIR");
 
         let output = cmd
             .stdout(Stdio::piped())
@@ -81,26 +91,6 @@ impl CliTestRunner {
         );
         result
     }
-}
-
-fn capability_cache_path() -> std::path::PathBuf {
-    std::env::var_os("CARGO_TARGET_DIR")
-        .map(std::path::PathBuf::from)
-        .unwrap_or_else(|| std::path::PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target"))
-        .join("e2e-cli-capabilities.json")
-}
-
-fn initialize_capability_cache() {
-    static INITIALIZE: Once = Once::new();
-    INITIALIZE.call_once(|| {
-        let path = capability_cache_path();
-        std::env::set_var("CARO_CAPABILITY_CACHE", &path);
-        let runtime = tokio::runtime::Builder::new_current_thread()
-            .enable_time()
-            .build()
-            .expect("create capability cache runtime");
-        runtime.block_on(caro::prompts::CapabilityProfile::detect_and_cache());
-    });
 }
 
 /// Result of running a CLI command
@@ -521,14 +511,9 @@ fn e2e_multiple_commands_performance() {
 
     let total_time = start_time.elapsed();
 
-    #[cfg(windows)]
-    let max_duration = Duration::from_secs(120);
-    #[cfg(not(windows))]
-    let max_duration = Duration::from_secs(60);
-
-    // Multiple Windows CLI startups include platform capability detection.
+    // Multiple commands should complete in reasonable time
     assert!(
-        total_time < max_duration,
+        total_time < Duration::from_secs(60),
         "Multiple commands took too long: {:?}",
         total_time
     );
@@ -558,10 +543,31 @@ fn e2e_output_consistency() {
 // Test Utilities and Helpers
 // =============================================================================
 
+/// Helper function to build the binary before running E2E tests
+/// This ensures we have a fresh binary for testing
+#[cfg(test)]
+fn ensure_binary_built() {
+    use std::process::Command;
+
+    let output = Command::new("cargo")
+        .args(["build", "--bin", "caro"])
+        .output()
+        .expect("Failed to build caro binary");
+
+    if !output.status.success() {
+        panic!(
+            "Failed to build caro binary: {}",
+            String::from_utf8_lossy(&output.stderr)
+        );
+    }
+}
+
 /// Integration test that runs a subset of critical E2E tests
 /// This can be used in CI/CD pipelines for quick validation
 #[test]
 fn e2e_smoke_test_suite() {
+    ensure_binary_built();
+
     let runner = CliTestRunner::new();
 
     // Critical functionality tests
@@ -572,7 +578,7 @@ fn e2e_smoke_test_suite() {
     assert!(help_output.contains("caro"));
 
     // Test 2: Command generation with unquoted prompt
-    let cmd_output = runner.run_success(&["show", "files"]);
+    let cmd_output = runner.run_success(&["list", "files"]);
     assert!(!cmd_output.is_empty());
 
     // Test 3: JSON output (flags must come before trailing args)
@@ -643,7 +649,7 @@ mod e2e_documentation {
 #[test]
 fn e2e_unquoted_prompt_basic() {
     let runner = CliTestRunner::new();
-    let output = runner.run_success(&["show", "files"]);
+    let output = runner.run_success(&["list", "files"]);
 
     // Should generate a command (not error)
     assert!(
@@ -817,9 +823,9 @@ fn e2e_shell_operator_truncation() {
     // Note: In shell, operators are usually processed before reaching the binary
     // This test simulates edge cases (quoted operators, scripts)
     // Testing with quoted operators to prevent shell from processing them
-    let output = runner.run_success(&["show", "files", ">", "output.txt"]);
+    let output = runner.run_success(&["list", "files", ">", "output.txt"]);
 
-    // The prompt should be truncated to "show files" (before the >)
+    // The prompt should be truncated to "list files" (before the >)
     // The command generation should work based on the truncated prompt
     assert!(
         output.contains("Command:") || output.contains("ls"),

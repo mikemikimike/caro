@@ -4,17 +4,11 @@
 use std::io::Write;
 use std::process::{Command, Stdio};
 
-fn caro_command(args: &[&str]) -> Command {
-    let mut command = Command::new(env!("CARGO_BIN_EXE_caro"));
-    command.args(args);
-    #[cfg(feature = "mock-backend")]
-    command.env("CARO_MOCK_BACKEND", "1");
-    command
-}
-
 /// Helper to run caro binary with input
 fn run_caro_with_input(args: &[&str], input: &str) -> (String, String, i32) {
-    let mut child = caro_command(args)
+    let mut child = Command::new("cargo")
+        .args(["run", "--quiet", "--"])
+        .args(args)
         .stdin(Stdio::piped())
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
@@ -40,7 +34,9 @@ fn run_caro_with_input(args: &[&str], input: &str) -> (String, String, i32) {
 
 /// Helper to run caro binary without input (for non-interactive tests)
 fn run_caro(args: &[&str]) -> (String, String, i32) {
-    let output = caro_command(args)
+    let output = Command::new("cargo")
+        .args(["run", "--quiet", "--"])
+        .args(args)
         .stdout(Stdio::piped())
         .stderr(Stdio::piped())
         .spawn()
@@ -134,7 +130,6 @@ fn test_e2e_short_execute_flag() {
 }
 
 #[test]
-#[cfg(not(target_os = "windows"))]
 fn test_e2e_interactive_flag() {
     // Test: -i flag should auto-execute
     let (stdout, _stderr, exit_code) = run_caro(&["-i", "current directory"]);
@@ -147,7 +142,6 @@ fn test_e2e_interactive_flag() {
 }
 
 #[test]
-#[cfg(not(target_os = "windows"))]
 fn test_e2e_verbose_with_execute() {
     // Test: --verbose with --execute should show debug info
     let (stdout, _stderr, exit_code) = run_caro(&["--verbose", "--execute", "current directory"]);
@@ -168,7 +162,6 @@ fn test_e2e_verbose_with_execute() {
 }
 
 #[test]
-#[cfg(not(target_os = "windows"))]
 fn test_e2e_json_output_format() {
     // Test: JSON output format
     let (stdout, _stderr, exit_code) =

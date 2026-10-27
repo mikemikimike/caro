@@ -2,14 +2,12 @@
 // Tests validate the CLI interface from specs/interfaces/cli-interface.md
 
 use std::time::Instant;
-use std::{path::PathBuf, sync::OnceLock};
 
 // Import types that will be implemented later
 // NOTE: These imports will fail until we implement the actual CLI module
 use caro::{
     cli::{CliApp, IntoCliArgs, OutputFormat},
     models::ShellType,
-    prompts::CapabilityProfile,
 };
 
 /// Mock CLI arguments for testing
@@ -85,98 +83,10 @@ impl IntoCliArgs for TestArgs {
     }
 }
 
-struct CliTestEnvironment {
-    _config_dir: tempfile::TempDir,
-    previous_config_dir: Option<std::ffi::OsString>,
-    previous_cache_dir: Option<std::ffi::OsString>,
-    previous_capability_cache: Option<std::ffi::OsString>,
-    previous_hf_home: Option<std::ffi::OsString>,
-    previous_backend: Option<std::ffi::OsString>,
-    previous_mock_backend: Option<std::ffi::OsString>,
-}
-
-impl CliTestEnvironment {
-    fn new() -> Self {
-        let config_dir = tempfile::tempdir().expect("create isolated CLI test directory");
-        static CAPABILITY_CACHE: OnceLock<PathBuf> = OnceLock::new();
-        let capability_cache = CAPABILITY_CACHE
-            .get_or_init(|| {
-                let target_dir = std::env::var_os("CARGO_TARGET_DIR")
-                    .map(PathBuf::from)
-                    .unwrap_or_else(|| PathBuf::from(env!("CARGO_MANIFEST_DIR")).join("target"));
-                let path = target_dir.join("cli-interface-capabilities.json");
-                let _ = std::fs::remove_file(&path);
-                path
-            })
-            .clone();
-        let previous_config_dir = std::env::var_os("CARO_CONFIG_DIR");
-        let previous_cache_dir = std::env::var_os("CARO_CACHE_DIR");
-        let previous_capability_cache = std::env::var_os("CARO_CAPABILITY_CACHE");
-        let previous_hf_home = std::env::var_os("HF_HOME");
-        let previous_backend = std::env::var_os("CARO_BACKEND");
-        let previous_mock_backend = std::env::var_os("CARO_MOCK_BACKEND");
-
-        std::env::set_var("CARO_CONFIG_DIR", config_dir.path());
-        std::env::set_var("CARO_CACHE_DIR", config_dir.path().join("models"));
-        std::env::set_var("CARO_CAPABILITY_CACHE", capability_cache);
-        std::env::set_var("HF_HOME", config_dir.path().join("hf-home"));
-        std::env::remove_var("CARO_BACKEND");
-        std::env::set_var("CARO_MOCK_BACKEND", "1");
-
-        Self {
-            _config_dir: config_dir,
-            previous_config_dir,
-            previous_cache_dir,
-            previous_capability_cache,
-            previous_hf_home,
-            previous_backend,
-            previous_mock_backend,
-        }
-    }
-
-    async fn prewarm_capability_cache(&self) {
-        static PREWARM: tokio::sync::OnceCell<()> = tokio::sync::OnceCell::const_new();
-        PREWARM
-            .get_or_init(|| async {
-                CapabilityProfile::detect_and_cache().await;
-            })
-            .await;
-    }
-}
-
-impl Drop for CliTestEnvironment {
-    fn drop(&mut self) {
-        fn restore(name: &str, value: Option<std::ffi::OsString>) {
-            match value {
-                Some(value) => std::env::set_var(name, value),
-                None => std::env::remove_var(name),
-            }
-        }
-
-        restore("CARO_CONFIG_DIR", self.previous_config_dir.take());
-        restore("CARO_CACHE_DIR", self.previous_cache_dir.take());
-        restore(
-            "CARO_CAPABILITY_CACHE",
-            self.previous_capability_cache.take(),
-        );
-        restore("HF_HOME", self.previous_hf_home.take());
-        restore("CARO_BACKEND", self.previous_backend.take());
-        restore("CARO_MOCK_BACKEND", self.previous_mock_backend.take());
-    }
-}
-
-async fn new_test_cli() -> (CliApp, CliTestEnvironment) {
-    let environment = CliTestEnvironment::new();
-    environment.prewarm_capability_cache().await;
-    let cli = CliApp::new().await.unwrap();
-    (cli, environment)
-}
-
 #[tokio::test]
-#[serial_test::serial]
 async fn test_basic_command_generation_flow() {
     // CONTRACT: Basic CLI flow should work with simple prompt
-    let (cli, _environment) = new_test_cli().await;
+    let cli = CliApp::new().await.unwrap();
 
     let args = TestArgs {
         prompt: Some("list files in current directory".to_string()),
@@ -201,10 +111,9 @@ async fn test_basic_command_generation_flow() {
 
 #[tokio::test]
 #[ignore = "Safety validation contract not fully implemented yet"]
-#[serial_test::serial]
 async fn test_safety_confirmation_required() {
     // CONTRACT: Dangerous commands should require explicit confirmation
-    let (cli, _environment) = new_test_cli().await;
+    let cli = CliApp::new().await.unwrap();
 
     let args = TestArgs {
         prompt: Some("delete all files in system".to_string()),
@@ -236,10 +145,9 @@ async fn test_safety_confirmation_required() {
 }
 
 #[tokio::test]
-#[serial_test::serial]
 async fn test_safety_confirmation_bypass() {
     // CONTRACT: Explicit confirmation should allow dangerous commands
-    let (cli, _environment) = new_test_cli().await;
+    let cli = CliApp::new().await.unwrap();
 
     let args = TestArgs {
         prompt: Some("remove temporary files".to_string()),
@@ -262,10 +170,9 @@ async fn test_safety_confirmation_bypass() {
 
 #[tokio::test]
 #[ignore = "LLM output quality test - flaky on CI without proper model"]
-#[serial_test::serial]
 async fn test_shell_type_specification() {
     // CONTRACT: Should respect shell type preferences
-    let (cli, _environment) = new_test_cli().await;
+    let cli = CliApp::new().await.unwrap();
 
     let args = TestArgs {
         prompt: Some("show current directory".to_string()),
@@ -289,10 +196,9 @@ async fn test_shell_type_specification() {
 }
 
 #[tokio::test]
-#[serial_test::serial]
 async fn test_output_format_options() {
     // CONTRACT: Should support different output formats
-    let (cli, _environment) = new_test_cli().await;
+    let cli = CliApp::new().await.unwrap();
 
     let test_formats = vec![
         ("json", OutputFormat::Json),
@@ -321,10 +227,9 @@ async fn test_output_format_options() {
 }
 
 #[tokio::test]
-#[serial_test::serial]
 async fn test_verbose_mode() {
     // CONTRACT: Verbose mode should provide detailed output
-    let (cli, _environment) = new_test_cli().await;
+    let cli = CliApp::new().await.unwrap();
 
     let args = TestArgs {
         prompt: Some("create directory".to_string()),
@@ -353,10 +258,9 @@ async fn test_verbose_mode() {
 }
 
 #[tokio::test]
-#[serial_test::serial]
 async fn test_configuration_file_loading() {
     // CONTRACT: Should load configuration from specified file
-    let (cli, _environment) = new_test_cli().await;
+    let cli = CliApp::new().await.unwrap();
 
     let args = TestArgs {
         prompt: Some("test config".to_string()),
@@ -380,10 +284,9 @@ async fn test_configuration_file_loading() {
 }
 
 #[tokio::test]
-#[serial_test::serial]
 async fn test_error_handling_graceful() {
     // CONTRACT: Should handle errors gracefully with helpful messages
-    let (cli, _environment) = new_test_cli().await;
+    let cli = CliApp::new().await.unwrap();
 
     // Test with invalid shell
     let args = TestArgs {
@@ -419,12 +322,9 @@ async fn test_error_handling_graceful() {
 
 #[tokio::test]
 #[ignore] // TODO: Performance optimization needed - currently 236ms, target <100ms
-#[serial_test::serial]
 async fn test_performance_requirements() {
     // CONTRACT: CLI startup should be fast (<100ms)
     let start = Instant::now();
-    let _environment = CliTestEnvironment::new();
-    _environment.prewarm_capability_cache().await;
     let cli = CliApp::new().await;
     let startup_time = start.elapsed();
 
@@ -455,10 +355,9 @@ async fn test_performance_requirements() {
 }
 
 #[tokio::test]
-#[serial_test::serial]
 async fn test_interactive_mode_simulation() {
     // CONTRACT: Should handle interactive scenarios
-    let (cli, _environment) = new_test_cli().await;
+    let cli = CliApp::new().await.unwrap();
 
     // Simulate interactive confirmation scenario
     let args = TestArgs {
@@ -485,10 +384,9 @@ async fn test_interactive_mode_simulation() {
 }
 
 #[tokio::test]
-#[serial_test::serial]
 async fn test_context_awareness() {
     // CONTRACT: Should use current directory context
-    let (cli, _environment) = new_test_cli().await;
+    let cli = CliApp::new().await.unwrap();
 
     let args = TestArgs {
         prompt: Some("build the project".to_string()),
@@ -516,10 +414,9 @@ async fn test_context_awareness() {
 }
 
 #[tokio::test]
-#[serial_test::serial]
 async fn test_help_and_version_commands() {
     // CONTRACT: Should handle standard CLI commands
-    let (cli, _environment) = new_test_cli().await;
+    let cli = CliApp::new().await.unwrap();
 
     // Test help equivalent
     let help_result = cli.show_help().await;
@@ -539,11 +436,8 @@ async fn test_help_and_version_commands() {
 }
 
 #[tokio::test]
-#[serial_test::serial]
 async fn test_concurrent_cli_usage() {
     // CONTRACT: Should handle concurrent CLI usage safely
-    let _environment = CliTestEnvironment::new();
-    _environment.prewarm_capability_cache().await;
     let handles: Vec<_> = (0..3)
         .map(|i| {
             tokio::spawn(async move {
@@ -570,10 +464,9 @@ async fn test_concurrent_cli_usage() {
 }
 
 #[tokio::test]
-#[serial_test::serial]
 async fn test_signal_handling() {
     // CONTRACT: Should handle interruption gracefully
-    let (cli, _environment) = new_test_cli().await;
+    let cli = CliApp::new().await.unwrap();
 
     // Test timeout scenario (simulating Ctrl+C)
     let args = TestArgs {

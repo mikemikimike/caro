@@ -526,14 +526,6 @@ impl CapabilityProfile {
                 self.os_version = version.trim().to_string();
             }
         }
-
-        #[cfg(windows)]
-        {
-            self.os_name = "Windows".to_string();
-            if let Ok(output) = Command::new("cmd.exe").args(["/C", "ver"]).output() {
-                self.os_version = String::from_utf8_lossy(&output.stdout).trim().to_string();
-            }
-        }
     }
 
     async fn detect_shell(&mut self) {
@@ -576,69 +568,12 @@ impl CapabilityProfile {
     }
 
     async fn detect_tools(&mut self) {
-        #[cfg(not(windows))]
         let tool_candidates = [
             "ls", "find", "grep", "awk", "sed", "sort", "head", "tail", "xargs", "stat", "du",
             "wc", "cat", "tar", "gzip", "curl", "cut", "tr", "uniq", "tee", "diff", "patch",
             "chmod", "chown", "mkdir", "rm", "cp", "mv", "touch", "file", "readlink", "basename",
             "dirname", "realpath", "date", "df", "ps", "kill", "top", "wget", "jq", "yq", "nc",
             "netstat", "ss", "lsof",
-        ];
-
-        #[cfg(windows)]
-        let tool_candidates = [
-            "ls",
-            "find",
-            "grep",
-            "awk",
-            "sed",
-            "sort",
-            "head",
-            "tail",
-            "xargs",
-            "stat",
-            "du",
-            "wc",
-            "cat",
-            "tar",
-            "gzip",
-            "curl",
-            "cut",
-            "tr",
-            "uniq",
-            "tee",
-            "diff",
-            "patch",
-            "chmod",
-            "chown",
-            "mkdir",
-            "rm",
-            "cp",
-            "mv",
-            "touch",
-            "file",
-            "readlink",
-            "basename",
-            "dirname",
-            "realpath",
-            "date",
-            "df",
-            "ps",
-            "kill",
-            "top",
-            "wget",
-            "jq",
-            "yq",
-            "nc",
-            "netstat",
-            "ss",
-            "lsof",
-            "cmd",
-            "powershell",
-            "where",
-            "whoami",
-            "findstr",
-            "tasklist",
         ];
 
         let mut tools = Vec::new();
@@ -713,73 +648,66 @@ impl CapabilityProfile {
     }
 
     async fn determine_profile_type(&mut self) {
-        #[cfg(windows)]
-        {
-            self.profile_type = ProfileType::Hybrid;
+        // Check for BusyBox first
+        if tool_exists("busybox").await {
+            // Check if core tools are symlinks to busybox
+            if let Ok(output) = run_command("ls", &["-la", "/bin/ls"]).await {
+                if output.contains("busybox") {
+                    self.profile_type = ProfileType::Busybox;
+                    return;
+                }
+            }
         }
 
-        #[cfg(not(windows))]
+        // Check for GNU coreutils
+        if let Ok(output) = run_command("ls", &["--version"]).await {
+            if output.to_lowercase().contains("gnu") || output.contains("coreutils") {
+                self.profile_type = ProfileType::GnuLinux;
+                return;
+            }
+        }
+
+        // Check for GNU findutils
+        if let Ok(output) = run_command("find", &["--version"]).await {
+            if output.to_lowercase().contains("gnu") || output.contains("findutils") {
+                self.profile_type = ProfileType::GnuLinux;
+                return;
+            }
+        }
+
+        // macOS / BSD detection - on macOS, we immediately know it's BSD
+        #[cfg(target_os = "macos")]
         {
-            // Check for BusyBox first
-            if tool_exists("busybox").await {
-                // Check if core tools are symlinks to busybox
-                if let Ok(output) = run_command("ls", &["-la", "/bin/ls"]).await {
-                    if output.contains("busybox") {
-                        self.profile_type = ProfileType::Busybox;
-                        return;
-                    }
-                }
-            }
+            self.profile_type = ProfileType::Bsd;
+        }
 
-            // Check for GNU coreutils
-            if let Ok(output) = run_command("ls", &["--version"]).await {
-                if output.to_lowercase().contains("gnu") || output.contains("coreutils") {
-                    self.profile_type = ProfileType::GnuLinux;
-                    return;
-                }
-            }
+        // Return early on macOS to avoid unreachable code
+        #[cfg(target_os = "macos")]
+        return;
 
-            // Check for GNU findutils
-            if let Ok(output) = run_command("find", &["--version"]).await {
-                if output.to_lowercase().contains("gnu") || output.contains("findutils") {
-                    self.profile_type = ProfileType::GnuLinux;
-                    return;
-                }
-            }
-
-            // macOS / BSD detection - on macOS, we immediately know it's BSD
-            #[cfg(target_os = "macos")]
-            {
-                self.profile_type = ProfileType::Bsd;
-            }
-
-            // Return early on macOS to avoid unreachable code
-            #[cfg(target_os = "macos")]
+        // If ls --version fails but ls works, likely BSD (non-macOS platforms)
+        #[cfg(not(target_os = "macos"))]
+        if run_command("ls", &["--version"]).await.is_err()
+            && run_command("ls", &["-d", "."]).await.is_ok()
+        {
+            self.profile_type = ProfileType::Bsd;
             return;
+        }
 
-            #[cfg(all(not(target_os = "macos"), not(windows)))]
-            if run_command("ls", &["--version"]).await.is_err()
-                && run_command("ls", &["-d", "."]).await.is_ok()
+        // Check for hybrid environments (Git Bash, MSYS2, Cygwin)
+        // Only check on non-macOS platforms since macOS already returned above
+        #[cfg(not(target_os = "macos"))]
+        {
+            if std::env::var("MSYSTEM").is_ok()
+                || std::env::var("CYGWIN").is_ok()
+                || self.uname.to_lowercase().contains("mingw")
+                || self.uname.to_lowercase().contains("cygwin")
             {
-                self.profile_type = ProfileType::Bsd;
+                self.profile_type = ProfileType::Hybrid;
                 return;
             }
 
-            // Check for hybrid environments (Git Bash, MSYS2, Cygwin)
-            // Only check on non-macOS platforms since macOS already returned above
-            #[cfg(all(not(target_os = "macos"), not(windows)))]
-            {
-                if std::env::var("MSYSTEM").is_ok()
-                    || std::env::var("CYGWIN").is_ok()
-                    || self.uname.to_lowercase().contains("mingw")
-                    || self.uname.to_lowercase().contains("cygwin")
-                {
-                    self.profile_type = ProfileType::Hybrid;
-                    return;
-                }
-
-                self.profile_type = ProfileType::Unknown;
-            }
+            self.profile_type = ProfileType::Unknown;
         }
     }
 
@@ -890,12 +818,7 @@ async fn run_command(cmd: &str, args: &[&str]) -> Result<String, String> {
 }
 
 async fn tool_exists(tool: &str) -> bool {
-    #[cfg(windows)]
-    let finder = "where.exe";
-    #[cfg(not(windows))]
-    let finder = "which";
-
-    run_command(finder, &[tool]).await.is_ok()
+    run_command("which", &[tool]).await.is_ok()
 }
 
 // Feature probe functions

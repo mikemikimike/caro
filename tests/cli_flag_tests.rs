@@ -3,6 +3,7 @@
 //! Tracks GitHub issue #793 (task caro-xk0.1): three flags documented at caro.sh/faq
 //! were advertised but not parsed. These tests lock in their observable behavior.
 
+use std::path::Path;
 use std::process::{Command, Stdio};
 
 use tempfile::TempDir;
@@ -14,14 +15,26 @@ struct CliRunner {
 
 impl CliRunner {
     fn new() -> Self {
-        let binary = env!("CARGO_BIN_EXE_caro").to_string();
+        let binary = if Path::new("target/debug/caro").exists() {
+            "target/debug/caro".to_string()
+        } else {
+            "cargo".to_string()
+        };
         let temp_dir = TempDir::new().expect("temp dir");
         Self { binary, temp_dir }
     }
 
     fn run(&self, args: &[&str]) -> (String, String, i32) {
-        let mut cmd = Command::new(&self.binary);
-        cmd.args(args);
+        let mut cmd = if self.binary == "cargo" {
+            let mut c = Command::new("cargo");
+            c.arg("run").arg("--");
+            c.args(args);
+            c
+        } else {
+            let mut c = Command::new(&self.binary);
+            c.args(args);
+            c
+        };
 
         cmd.env("CARO_CONFIG_DIR", self.temp_dir.path());
         cmd.env_remove("CARO_CACHE_DIR");
@@ -181,13 +194,13 @@ fn backend_info_lists_known_backends() {
     let runner = CliRunner::new();
     let (stdout, stderr, _code) = runner.run(&["--backend-info"]);
     let combined = format!("{}{}", stdout, stderr);
-    // The table lists CLI-served inference backends, not the static matcher.
+    // We print a header plus at least these built-in backend names.
     assert!(
         combined.to_lowercase().contains("backend"),
         "--backend-info output should mention 'backend', got:\n{}",
         combined
     );
-    for name in ["embedded", "ollama", "vllm"] {
+    for name in ["static", "embedded", "ollama", "vllm"] {
         assert!(
             combined.to_lowercase().contains(name),
             "--backend-info output should list '{}', got:\n{}",
