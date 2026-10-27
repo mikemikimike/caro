@@ -4,6 +4,7 @@ use std::sync::mpsc;
 use std::thread;
 use std::time::{Duration, Instant};
 
+use caro::model_catalog::ModelCatalog;
 use caro::prompts::CapabilityProfile;
 use serial_test::serial;
 use tempfile::tempdir;
@@ -148,7 +149,8 @@ fn ai_once_does_not_report_a_download_for_a_cached_model() {
     let app_data = temp_dir.path().join("appdata");
     let local_app_data = temp_dir.path().join("localappdata");
     let model_cache = temp_dir.path().join("model-cache");
-    let model_path = model_cache.join("smollm-135m-instruct-q4_k_m.gguf");
+    let model = ModelCatalog::by_id("smollm-135m-q4").expect("model in catalog");
+    let model_path = model_cache.join(model.filename);
     std::fs::create_dir_all(model_path.parent().expect("model cache parent"))
         .expect("create isolated model cache");
     std::fs::write(&model_path, b"cached model placeholder").expect("write cached model marker");
